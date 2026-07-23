@@ -66,6 +66,7 @@
   #root .fig-sub { font-size: 17px; font-weight: 500; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
   #root .fig-pct { font-size: 17px; font-weight: 500; font-variant-numeric: tabular-nums; }
   #root .fig-pct.over { color: var(--signal); }
+  #root .fig-main.over { color: var(--signal); }
 
   /* ── controls ───────────────────────────────── */
   #root .controls {
@@ -263,6 +264,10 @@
     return { mensuel, annuel: mensuel * 12, max: Math.max(1, ...list.map(i => Number(i.amount || 0))) };
   }
 
+  function prelevementsTotal() {
+    return state.items.reduce((s, i) => s + Number(i.amount || 0), 0);
+  }
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -392,10 +397,15 @@
 
     let figuresHTML;
     if (isTx) {
+      const remaining = state.revenu != null ? state.revenu - prelevementsTotal() - txSummary.total : null;
       const topCats = Object.entries(txSummary.byCategory).sort((a, b) => b[1] - a[1]);
       figuresHTML = `
-        <div><span class="fig-label">Dépensé ce mois</span><div class="fig-main">${eur(txSummary.total)}</div></div>
-        ${topCats.slice(0, 3).map(([cat, sum]) => `<div><span class="fig-label">${esc(cat)}</span><div class="fig-sub">${eur(sum)}</div></div>`).join('')}`;
+        <div><span class="fig-label">Reste ce mois</span>
+          <div class="fig-main${remaining !== null && remaining < 0 ? ' over' : ''}">${remaining !== null ? eur(remaining) : '—'}</div>
+          ${remaining === null ? '<div class="fig-sub" style="font-size:11px">Renseigne ton revenu ↓</div>' : ''}
+        </div>
+        <div><span class="fig-label">Dépensé ce mois</span><div class="fig-sub">${eur(txSummary.total)}</div></div>
+        ${topCats.slice(0, 2).map(([cat, sum]) => `<div><span class="fig-label">${esc(cat)}</span><div class="fig-sub">${eur(sum)}</div></div>`).join('')}`;
     } else {
       figuresHTML = `
         <div><span class="fig-label">Par mois</span><div class="fig-main">${eur(t.mensuel)}</div></div>
