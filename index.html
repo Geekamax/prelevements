@@ -191,10 +191,23 @@
   const accName = id => state.accountNames[id] || ACCOUNTS.find(a => a.id === id).name;
 
   async function load() {
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (raw) state = Object.assign(state, JSON.parse(raw));
-    } catch (e) { /* première ouverture : rien en mémoire */ }
+    const params = new URLSearchParams(location.search);
+    const restore = params.get('restore');
+    if (restore) {
+      try {
+        const parsed = JSON.parse(decodeURIComponent(restore));
+        if (!Array.isArray(parsed.items)) throw new Error();
+        state = Object.assign({ accountNames: {} }, parsed);
+        await save();
+        toast = 'Sauvegarde restaurée depuis le lien';
+      } catch (e) { toast = 'Lien de sauvegarde invalide'; }
+      history.replaceState(null, '', location.pathname);
+    } else {
+      try {
+        const raw = localStorage.getItem(KEY);
+        if (raw) state = Object.assign(state, JSON.parse(raw));
+      } catch (e) { /* première ouverture : rien en mémoire */ }
+    }
     if (!state.items.length) openId = 'new';
     render();
   }

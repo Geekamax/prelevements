@@ -1,5 +1,5 @@
 // Cache applicatif : l'app se lance sans reseau une fois installee.
-const CACHE = 'prelevements-v2';
+const CACHE = 'prelevements-v3';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
