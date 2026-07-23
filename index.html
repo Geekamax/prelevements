@@ -82,6 +82,9 @@
   #root .tab[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
   #root .tab .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
   #root .spacer { flex: 1 1 auto; }
+  #root .month-nav { display: flex; align-items: center; gap: 6px; }
+  #root .month-label { font-size: 11px; letter-spacing: .06em; text-transform: capitalize; min-width: 100px; text-align: center; }
+  #root .month-nav button.act { padding: 4px 9px; }
 
   #root button.act {
     font-family: var(--mono); font-size: 11px; letter-spacing: .06em;
@@ -176,9 +179,14 @@
     { id: 'b', name: 'Compte courant' }
   ];
 
-  let state = { items: [], revenu: null, accountNames: {} };
+  const DEFAULT_CATEGORIES = ['Courses', 'Carburant', 'Restaurant', 'Loisirs', 'Santé', 'Vêtements', 'Autre'];
+  const NEW_CATEGORY = '__new__';
+
+  let state = { items: [], revenu: null, accountNames: {}, categories: DEFAULT_CATEGORIES.slice(), transactions: [] };
   let filter = 'all';
   let openId = null;   // id of row being edited, or 'new'
+  let txOpenId = null; // id of transaction being edited, or 'new'
+  let viewMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
   let toast = '';
   let showExport = false;
   let showImport = false;
@@ -189,6 +197,31 @@
   const fmtDate = s => s ? new Date(s + 'T00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
   const monthsSince = s => s ? Math.floor((Date.now() - new Date(s + 'T00:00')) / 2592000000) : 99;
   const accName = id => state.accountNames[id] || ACCOUNTS.find(a => a.id === id).name;
+
+  const monthLabel = ym => new Date(ym + '-01T00:00').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  const shiftMonth = (ym, delta) => {
+    const [y, m] = ym.split('-').map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  };
+  const txForMonth = ym => state.transactions
+    .filter(t => t.date.slice(0, 7) === ym)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const txTotals = list => {
+    const byCategory = {};
+    let total = 0;
+    list.forEach(t => {
+      const amt = Number(t.amount || 0);
+      total += amt;
+      byCategory[t.category] = (byCategory[t.category] || 0) + amt;
+    });
+    return { total, byCategory };
+  };
+
+  function ensureDefaults() {
+    if (!state.categories || !state.categories.length) state.categories = DEFAULT_CATEGORIES.slice();
+    if (!state.transactions) state.transactions = [];
+  }
 
   async function load() {
     const params = new URLSearchParams(location.search);
@@ -208,6 +241,7 @@
         if (raw) state = Object.assign(state, JSON.parse(raw));
       } catch (e) { /* première ouverture : rien en mémoire */ }
     }
+    ensureDefaults();
     if (!state.items.length) openId = 'new';
     render();
   }
@@ -292,6 +326,48 @@
       </div>`;
   }
 
+  function txRowHTML(tx) {
+    return `
+      <div class="row tx-row" data-txid="${tx.id}" role="button" tabindex="0"
+           aria-label="Modifier ${esc(tx.category)}">
+        <div class="day">${fmtDate(tx.date).replace(/ \d{4}$/, '')}</div>
+        <div class="body">
+          <div class="label">${esc(tx.category)}${tx.label ? ` <span style="color:var(--ink-soft);font-weight:400">— ${esc(tx.label)}</span>` : ''}</div>
+        </div>
+        <div class="amount">${eur(tx.amount)}</div>
+      </div>`;
+  }
+
+  function txPanelHTML(tx) {
+    const isNew = !tx;
+    const v = tx || { label: '', amount: '', category: state.categories[0], date: (viewMonth === today().slice(0, 7) ? today() : viewMonth + '-01') };
+    return `
+      <div class="panel" data-txpanel="${isNew ? 'new' : tx.id}">
+        <div class="fields">
+          <label class="f"><span>Catégorie</span>
+            <select data-f="category">
+              ${state.categories.map(c => `<option value="${esc(c)}" ${v.category === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+              <option value="${NEW_CATEGORY}">+ Nouvelle catégorie…</option>
+            </select></label>
+          <label class="f"><span>Montant €</span>
+            <input data-f="amount" type="number" step="0.01" min="0" value="${v.amount}" placeholder="0,00"></label>
+          <label class="f"><span>Date</span>
+            <input data-f="date" type="date" value="${v.date}"></label>
+        </div>
+        <label class="f" style="margin-top:10px" data-newcat-field ${v.category !== NEW_CATEGORY ? 'hidden' : ''}>
+          <span>Nom de la nouvelle catégorie</span>
+          <input data-f="newCategory" placeholder="Ex : Cadeaux" autocomplete="off"></label>
+        <label class="f" style="margin-top:10px"><span>Détail (optionnel)</span>
+          <input data-f="label" value="${esc(v.label)}" placeholder="Précision libre…" autocomplete="off"></label>
+        <div class="panel-actions">
+          <button class="act" data-do="save-tx">${isNew ? 'Ajouter' : 'Enregistrer'}</button>
+          <button class="act ghost" data-do="cancel-tx">Annuler</button>
+          ${isNew ? '' : `<div class="spacer"></div>
+                          <button class="act ghost del" data-do="delete-tx">Supprimer</button>`}
+        </div>
+      </div>`;
+  }
+
   function backupPanelHTML(mode, prefill) {
     const isImport = mode === 'import';
     return `
@@ -307,32 +383,63 @@
   }
 
   function render() {
+    const isTx = filter === 'b';
     const t = totals();
     const list = visible();
     const pct = state.revenu ? (t.mensuel / state.revenu) * 100 : null;
+    const monthList = isTx ? txForMonth(viewMonth) : [];
+    const txSummary = isTx ? txTotals(monthList) : null;
+
+    let figuresHTML;
+    if (isTx) {
+      const topCats = Object.entries(txSummary.byCategory).sort((a, b) => b[1] - a[1]);
+      figuresHTML = `
+        <div><span class="fig-label">Dépensé ce mois</span><div class="fig-main">${eur(txSummary.total)}</div></div>
+        ${topCats.slice(0, 3).map(([cat, sum]) => `<div><span class="fig-label">${esc(cat)}</span><div class="fig-sub">${eur(sum)}</div></div>`).join('')}`;
+    } else {
+      figuresHTML = `
+        <div><span class="fig-label">Par mois</span><div class="fig-main">${eur(t.mensuel)}</div></div>
+        <div><span class="fig-label">Par an</span><div class="fig-sub">${eur(t.annuel)}</div></div>
+        ${pct !== null ? `<div><span class="fig-label">Du revenu net</span>
+          <div class="fig-pct ${pct > 50 ? 'over' : ''}">${pct.toFixed(0)} %</div></div>` : ''}`;
+    }
 
     let ledger = '';
-    if (!list.length && openId !== 'new') {
-      ledger = `<div class="empty"><strong>Aucun prélèvement enregistré</strong>
-        Ajoute une ligne pour chaque débit qui tombe tous les mois.</div>`;
+    if (isTx) {
+      if (!monthList.length && txOpenId !== 'new') {
+        ledger = `<div class="empty"><strong>Aucune dépense ce mois-ci</strong>
+          Ajoute une dépense pour la suivre par catégorie.</div>`;
+      } else {
+        monthList.forEach(tx => {
+          ledger += (txOpenId === tx.id) ? txPanelHTML(tx) : txRowHTML(tx);
+        });
+      }
+      if (txOpenId === 'new') ledger += txPanelHTML(null);
     } else {
-      let prevDay = null;
-      list.forEach(item => {
-        ledger += (openId === item.id) ? panelHTML(item) : rowHTML(item, t.max, prevDay);
-        prevDay = item.day;
-      });
+      if (!list.length && openId !== 'new') {
+        ledger = `<div class="empty"><strong>Aucun prélèvement enregistré</strong>
+          Ajoute une ligne pour chaque débit qui tombe tous les mois.</div>`;
+      } else {
+        let prevDay = null;
+        list.forEach(item => {
+          ledger += (openId === item.id) ? panelHTML(item) : rowHTML(item, t.max, prevDay);
+          prevDay = item.day;
+        });
+      }
+      if (openId === 'new') ledger += panelHTML(null);
     }
-    if (openId === 'new') ledger += panelHTML(null);
+
+    const monthNavHTML = isTx ? `
+      <div class="month-nav">
+        <button class="act ghost" data-do="prev-month" aria-label="Mois précédent">‹</button>
+        <span class="month-label">${esc(monthLabel(viewMonth))}</span>
+        <button class="act ghost" data-do="next-month" aria-label="Mois suivant">›</button>
+      </div>` : '';
 
     root.innerHTML = `
       <div class="masthead">
         <h1>Prélèvements</h1>
-        <div class="figures">
-          <div><span class="fig-label">Par mois</span><div class="fig-main">${eur(t.mensuel)}</div></div>
-          <div><span class="fig-label">Par an</span><div class="fig-sub">${eur(t.annuel)}</div></div>
-          ${pct !== null ? `<div><span class="fig-label">Du revenu net</span>
-            <div class="fig-pct ${pct > 50 ? 'over' : ''}">${pct.toFixed(0)} %</div></div>` : ''}
-        </div>
+        <div class="figures">${figuresHTML}</div>
       </div>
 
       <div class="controls">
@@ -341,8 +448,9 @@
           ${ACCOUNTS.map(a => `<button class="tab" data-filter="${a.id}" aria-pressed="${filter === a.id}">
             <span class="dot" style="background:var(--acc-${a.id})"></span>${esc(accName(a.id))}</button>`).join('')}
         </div>
+        ${monthNavHTML}
         <div class="spacer"></div>
-        <button class="act" data-do="add">+ Ajouter</button>
+        <button class="act" data-do="${isTx ? 'add-tx' : 'add'}">+ Ajouter</button>
       </div>
 
       <div class="ledger">${ledger}</div>
@@ -374,14 +482,38 @@
     };
   }
 
-  function bind() {
-    root.querySelectorAll('.tab').forEach(b =>
-      b.onclick = () => { filter = b.dataset.filter; openId = null; render(); });
+  function readTxPanel(el) {
+    const get = f => el.querySelector(`[data-f="${f}"]`).value;
+    const catSel = get('category');
+    return {
+      category: catSel === NEW_CATEGORY ? get('newCategory').trim() : catSel,
+      amount: parseFloat(get('amount')),
+      date: get('date'),
+      label: get('label').trim()
+    };
+  }
 
-    root.querySelectorAll('.row').forEach(r => {
+  function bind() {
+    root.querySelectorAll('.tab[data-filter]').forEach(b =>
+      b.onclick = () => { filter = b.dataset.filter; openId = null; txOpenId = null; render(); });
+
+    root.querySelectorAll('.row:not(.tx-row)').forEach(r => {
       const open = () => { openId = r.dataset.id; render(); };
       r.onclick = open;
       r.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+    });
+
+    root.querySelectorAll('.tx-row').forEach(r => {
+      const open = () => { txOpenId = r.dataset.txid; render(); };
+      r.onclick = open;
+      r.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+    });
+
+    root.querySelectorAll('[data-txpanel] select[data-f="category"]').forEach(sel => {
+      sel.onchange = () => {
+        const newCatField = sel.closest('.panel').querySelector('[data-newcat-field]');
+        if (newCatField) newCatField.hidden = sel.value !== NEW_CATEGORY;
+      };
     });
 
     root.querySelectorAll('[data-do]').forEach(b => b.onclick = async () => {
@@ -418,6 +550,29 @@
         openId = null; await save(); render(); return;
       }
 
+      if (act === 'add-tx') { txOpenId = 'new'; render(); return; }
+      if (act === 'cancel-tx') { txOpenId = null; render(); return; }
+
+      if (act === 'save-tx') {
+        const d = readTxPanel(panel);
+        if (!d.category || !(d.amount >= 0) || !d.date) { toast = 'Catégorie, montant et date requis'; render(); return; }
+        if (!state.categories.includes(d.category)) state.categories.push(d.category);
+        if (panel.dataset.txpanel === 'new') {
+          state.transactions.push({ id: uid(), ...d });
+        } else {
+          Object.assign(state.transactions.find(tx => tx.id === panel.dataset.txpanel), d);
+        }
+        txOpenId = null; await save(); render(); return;
+      }
+
+      if (act === 'delete-tx') {
+        state.transactions = state.transactions.filter(tx => tx.id !== panel.dataset.txpanel);
+        txOpenId = null; await save(); render(); return;
+      }
+
+      if (act === 'prev-month') { viewMonth = shiftMonth(viewMonth, -1); render(); return; }
+      if (act === 'next-month') { viewMonth = shiftMonth(viewMonth, 1); render(); return; }
+
       if (act === 'export') {
         try { await navigator.clipboard.writeText(JSON.stringify(state)); toast = 'Copié dans le presse-papiers'; }
         catch (e) { toast = 'Copie auto impossible : sélectionne le texte ci-dessous'; }
@@ -434,6 +589,7 @@
           const parsed = JSON.parse(ta.value);
           if (!Array.isArray(parsed.items)) throw new Error();
           state = Object.assign({ accountNames: {} }, parsed);
+          ensureDefaults();
           await save(); toast = 'Sauvegarde restaurée';
           showImport = false;
         } catch (e) { toast = 'Sauvegarde illisible'; }
