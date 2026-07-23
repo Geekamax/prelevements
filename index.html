@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Prelevements</title>
+<meta name="theme-color" content="#F4F6F1">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Prelevements">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23F4F6F1'/><rect x='6' y='7' width='20' height='2.5' fill='%2318222E'/><rect x='6' y='14' width='14' height='2.5' fill='%231F6B58'/><rect x='6' y='21' width='9' height='2.5' fill='%234C5CA6'/></svg>">
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: #E9ECE4; min-height: 100vh;
+         padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  @media (min-width: 780px) { body { padding-top: 32px; padding-bottom: 32px; } }
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="loading">Chargement…</div>
+</div>
+
+<style>
+  #root {
+    --paper: #F4F6F1;
+    --ink: #18222E;
+    --ink-soft: #5F6C79;
+    --ink-faint: #97A2AB;
+    --rule: #D4DACE;
+    --rule-soft: #E4E8DF;
+    --acc-a: #1F6B58;
+    --acc-b: #4C5CA6;
+    --signal: #B5442A;
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", "Roboto Mono", Menlo, Consolas, monospace;
+
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 28px 24px 40px;
+    border-radius: 4px;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  #root *, #root *::before, #root *::after { box-sizing: border-box; }
+
+  #root .loading { color: var(--ink-faint); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+
+  /* ── masthead ───────────────────────────────── */
+  #root .masthead { border-bottom: 2px solid var(--ink); padding-bottom: 14px; margin-bottom: 4px; }
+  #root h1 {
+    font-family: var(--mono);
+    font-size: 13px; font-weight: 700;
+    letter-spacing: .22em; text-transform: uppercase;
+    margin: 0 0 18px;
+  }
+  #root .figures { display: flex; flex-wrap: wrap; gap: 32px; align-items: baseline; }
+  #root .fig-label { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-soft); display: block; margin-bottom: 2px; }
+  #root .fig-main { font-size: 30px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  #root .fig-sub { font-size: 17px; font-weight: 500; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  #root .fig-pct { font-size: 17px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  #root .fig-pct.over { color: var(--signal); }
+
+  /* ── controls ───────────────────────────────── */
+  #root .controls {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 12px 0; border-bottom: 1px solid var(--rule); margin-bottom: 2px;
+  }
+  #root .tabs { display: flex; gap: 0; border: 1px solid var(--rule); }
+  #root .tab {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .06em;
+    background: none; border: 0; border-right: 1px solid var(--rule);
+    padding: 6px 11px; cursor: pointer; color: var(--ink-soft);
+  }
+  #root .tab:last-child { border-right: 0; }
+  #root .tab[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  #root .tab .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+  #root .spacer { flex: 1 1 auto; }
+
+  #root button.act {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .06em;
+    background: var(--ink); color: var(--paper); border: 1px solid var(--ink);
+    padding: 6px 12px; cursor: pointer;
+  }
+  #root button.act.ghost { background: none; color: var(--ink); }
+  #root button.act:hover { opacity: .82; }
+  #root button:focus-visible, #root input:focus-visible, #root select:focus-visible {
+    outline: 2px solid var(--acc-b); outline-offset: 1px;
+  }
+
+  /* ── the spine ──────────────────────────────── */
+  #root .ledger { margin-top: 6px; }
+  #root .row {
+    display: grid; grid-template-columns: 34px 1fr auto;
+    gap: 0 14px; align-items: baseline;
+    border-bottom: 1px solid var(--rule-soft);
+    padding: 9px 0; position: relative; cursor: pointer;
+  }
+  #root .row:hover { background: rgba(24,34,46,.03); }
+  #root .day {
+    font-size: 11px; color: var(--ink-faint); text-align: right;
+    font-variant-numeric: tabular-nums; padding-top: 1px;
+    border-right: 1px solid var(--rule); padding-right: 8px; align-self: stretch;
+  }
+  #root .day.repeat { color: transparent; }
+  #root .body { min-width: 0; }
+  #root .label { font-size: 14px; font-weight: 500; word-break: break-word; }
+  #root .bar { height: 3px; background: var(--acc-a); margin-top: 5px; opacity: .5; border-radius: 2px; }
+  #root .row[data-acc="b"] .bar { background: var(--acc-b); }
+  #root .meta { font-size: 10px; color: var(--ink-faint); letter-spacing: .04em; margin-top: 5px; }
+  #root .amount { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  #root .badge {
+    display: inline-block; font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+    padding: 1px 5px; margin-left: 6px; vertical-align: 1px; border: 1px solid currentColor;
+  }
+  #root .badge.up { color: var(--signal); }
+  #root .badge.down { color: var(--acc-a); }
+  #root .badge.stale { color: var(--ink-faint); }
+
+  /* ── edit panel ─────────────────────────────── */
+  #root .panel { background: rgba(24,34,46,.04); border-bottom: 1px solid var(--rule); padding: 14px; }
+  #root .fields { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
+  #root label.f { display: block; }
+  #root label.f span { display: block; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 3px; }
+  #root input, #root select {
+    font-family: var(--mono); font-size: 13px; width: 100%;
+    padding: 6px 8px; border: 1px solid var(--rule); background: var(--paper); color: var(--ink);
+  }
+  #root .panel-actions { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+  #root .del { color: var(--signal); border-color: var(--signal); }
+  #root .history { font-size: 10px; color: var(--ink-faint); margin-top: 10px; line-height: 1.7; }
+
+  /* ── empty + footer ─────────────────────────── */
+  #root .empty { padding: 40px 0; text-align: center; color: var(--ink-soft); font-size: 13px; }
+  #root .empty strong { display: block; color: var(--ink); font-size: 14px; margin-bottom: 6px; }
+
+  #root .footer {
+    margin-top: 22px; padding-top: 14px; border-top: 2px solid var(--ink);
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+    font-size: 10px; letter-spacing: .06em; color: var(--ink-soft); text-transform: uppercase;
+  }
+  #root .footer input { width: 92px; padding: 4px 6px; font-size: 12px; text-transform: none; letter-spacing: 0; }
+  #root .footer button {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+    background: none; border: 0; border-bottom: 1px solid var(--rule); color: var(--ink-soft); cursor: pointer; padding: 2px 0;
+  }
+  #root .footer button:hover { color: var(--ink); border-color: var(--ink); }
+
+  #root .toast { font-size: 10px; color: var(--acc-a); letter-spacing: .06em; }
+
+  @media (max-width: 560px) {
+    #root { padding: 20px 14px 32px; }
+    #root .fields { grid-template-columns: 1fr 1fr; }
+    #root .fields label.f:first-child { grid-column: 1 / -1; }
+    #root .figures { gap: 20px; }
+    #root .fig-main { font-size: 25px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #root * { transition: none !important; } }
+</style>
+
+<script>
+(function () {
+  const KEY = 'prelevements-v1';
+  const root = document.getElementById('root');
+
+  const ACCOUNTS = [
+    { id: 'a', name: 'Compte prélèvements' },
+    { id: 'b', name: 'Compte courant' }
+  ];
+
+  let state = { items: [], revenu: null, accountNames: {} };
+  let filter = 'all';
+  let openId = null;   // id of row being edited, or 'new'
+  let toast = '';
+
+  const eur = n => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n || 0);
+  const uid = () => Math.random().toString(36).slice(2, 9);
+  const today = () => new Date().toISOString().slice(0, 10);
+  const fmtDate = s => s ? new Date(s + 'T00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  const monthsSince = s => s ? Math.floor((Date.now() - new Date(s + 'T00:00')) / 2592000000) : 99;
+  const accName = id => state.accountNames[id] || ACCOUNTS.find(a => a.id === id).name;
+
+  async function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) state = Object.assign(state, JSON.parse(raw));
+    } catch (e) { /* première ouverture : rien en mémoire */ }
+    if (!state.items.length) openId = 'new';
+    render();
+  }
+
+  async function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); }
+    catch (e) { toast = 'Enregistrement impossible'; render(); }
+  }
+
+  function visible() {
+    return state.items
+      .filter(i => filter === 'all' || i.accountId === filter)
+      .sort((a, b) => a.day - b.day || a.label.localeCompare(b.label));
+  }
+
+  function totals() {
+    const list = visible();
+    const mensuel = list.reduce((s, i) => s + Number(i.amount || 0), 0);
+    return { mensuel, annuel: mensuel * 12, max: Math.max(1, ...list.map(i => Number(i.amount || 0))) };
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function changeBadge(item) {
+    const h = item.history;
+    if (!h || !h.length) return '';
+    const prev = Number(h[h.length - 1].amount);
+    const d = Number(item.amount) - prev;
+    if (Math.abs(d) < 0.01) return '';
+    const cls = d > 0 ? 'up' : 'down';
+    return `<span class="badge ${cls}">${d > 0 ? '+' : '−'}${eur(Math.abs(d)).replace('−', '')}</span>`;
+  }
+
+  function rowHTML(item, max, prevDay) {
+    const pct = Math.max(3, (Number(item.amount) / max) * 100);
+    const stale = monthsSince(item.reviewedAt) >= 6;
+    const bits = [accName(item.accountId)];
+    if (item.reviewedAt) bits.push('revu ' + fmtDate(item.reviewedAt));
+    return `
+      <div class="row" data-acc="${item.accountId}" data-id="${item.id}" role="button" tabindex="0"
+           aria-label="Modifier ${esc(item.label)}">
+        <div class="day ${item.day === prevDay ? 'repeat' : ''}">${item.day}</div>
+        <div class="body">
+          <div class="label">${esc(item.label)}${changeBadge(item)}${stale ? '<span class="badge stale">à revoir</span>' : ''}</div>
+          <div class="bar" style="width:${pct}%"></div>
+          <div class="meta">${bits.join(' · ')}</div>
+        </div>
+        <div class="amount">${eur(item.amount)}</div>
+      </div>`;
+  }
+
+  function panelHTML(item) {
+    const isNew = !item;
+    const v = item || { label: '', amount: '', day: 1, accountId: 'a' };
+    const hist = (item && item.history || []).slice(-4).reverse()
+      .map(h => `<div>${fmtDate(h.date)} — ${eur(h.amount)}</div>`).join('');
+    return `
+      <div class="panel" data-panel="${isNew ? 'new' : item.id}">
+        <div class="fields">
+          <label class="f"><span>Libellé</span>
+            <input data-f="label" value="${esc(v.label)}" placeholder="Loyer, mutuelle, box internet…" autocomplete="off"></label>
+          <label class="f"><span>Montant €</span>
+            <input data-f="amount" type="number" step="0.01" min="0" value="${v.amount}" placeholder="0,00"></label>
+          <label class="f"><span>Jour du mois</span>
+            <input data-f="day" type="number" min="1" max="31" value="${v.day}"></label>
+        </div>
+        <label class="f" style="margin-top:10px"><span>Compte débité</span>
+          <select data-f="accountId">
+            ${ACCOUNTS.map(a => `<option value="${a.id}" ${v.accountId === a.id ? 'selected' : ''}>${esc(accName(a.id))}</option>`).join('')}
+          </select></label>
+        <div class="panel-actions">
+          <button class="act" data-do="save">${isNew ? 'Ajouter' : 'Enregistrer'}</button>
+          <button class="act ghost" data-do="cancel">Annuler</button>
+          ${isNew ? '' : `<button class="act ghost" data-do="review">Revu aujourd'hui</button>
+                          <div class="spacer"></div>
+                          <button class="act ghost del" data-do="delete">Supprimer</button>`}
+        </div>
+        ${hist ? `<div class="history"><strong>Montants précédents</strong>${hist}</div>` : ''}
+      </div>`;
+  }
+
+  function render() {
+    const t = totals();
+    const list = visible();
+    const pct = state.revenu ? (t.mensuel / state.revenu) * 100 : null;
+
+    let ledger = '';
+    if (!list.length && openId !== 'new') {
+      ledger = `<div class="empty"><strong>Aucun prélèvement enregistré</strong>
+        Ajoute une ligne pour chaque débit qui tombe tous les mois.</div>`;
+    } else {
+      let prevDay = null;
+      list.forEach(item => {
+        ledger += (openId === item.id) ? panelHTML(item) : rowHTML(item, t.max, prevDay);
+        prevDay = item.day;
+      });
+    }
+    if (openId === 'new') ledger += panelHTML(null);
+
+    root.innerHTML = `
+      <div class="masthead">
+        <h1>Prélèvements</h1>
+        <div class="figures">
+          <div><span class="fig-label">Par mois</span><div class="fig-main">${eur(t.mensuel)}</div></div>
+          <div><span class="fig-label">Par an</span><div class="fig-sub">${eur(t.annuel)}</div></div>
+          ${pct !== null ? `<div><span class="fig-label">Du revenu net</span>
+            <div class="fig-pct ${pct > 50 ? 'over' : ''}">${pct.toFixed(0)} %</div></div>` : ''}
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="tabs" role="group" aria-label="Filtrer par compte">
+          <button class="tab" data-filter="all" aria-pressed="${filter === 'all'}">Tous</button>
+          ${ACCOUNTS.map(a => `<button class="tab" data-filter="${a.id}" aria-pressed="${filter === a.id}">
+            <span class="dot" style="background:var(--acc-${a.id})"></span>${esc(accName(a.id))}</button>`).join('')}
+        </div>
+        <div class="spacer"></div>
+        <button class="act" data-do="add">+ Ajouter</button>
+      </div>
+
+      <div class="ledger">${ledger}</div>
+
+      <div class="footer">
+        <label>Revenu net mensuel
+          <input id="revenu" type="number" min="0" step="10" value="${state.revenu ?? ''}" placeholder="—"></label>
+        <div class="spacer"></div>
+        ${toast ? `<span class="toast">${esc(toast)}</span>` : ''}
+        <button data-do="export">Exporter</button>
+        <button data-do="import">Importer</button>
+      </div>`;
+
+    toast = '';
+    bind();
+  }
+
+  function readPanel(el) {
+    const get = f => el.querySelector(`[data-f="${f}"]`).value;
+    return {
+      label: get('label').trim(),
+      amount: parseFloat(get('amount')),
+      day: Math.min(31, Math.max(1, parseInt(get('day'), 10) || 1)),
+      accountId: get('accountId')
+    };
+  }
+
+  function bind() {
+    root.querySelectorAll('.tab').forEach(b =>
+      b.onclick = () => { filter = b.dataset.filter; openId = null; render(); });
+
+    root.querySelectorAll('.row').forEach(r => {
+      const open = () => { openId = r.dataset.id; render(); };
+      r.onclick = open;
+      r.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+    });
+
+    root.querySelectorAll('[data-do]').forEach(b => b.onclick = async () => {
+      const act = b.dataset.do;
+      const panel = b.closest('.panel');
+
+      if (act === 'add') { openId = 'new'; render(); return; }
+      if (act === 'cancel') { openId = null; render(); return; }
+
+      if (act === 'save') {
+        const d = readPanel(panel);
+        if (!d.label || !(d.amount >= 0)) { toast = 'Libellé et montant requis'; render(); return; }
+        if (panel.dataset.panel === 'new') {
+          state.items.push({ id: uid(), ...d, history: [], reviewedAt: today() });
+        } else {
+          const it = state.items.find(i => i.id === panel.dataset.panel);
+          if (Math.abs(Number(it.amount) - d.amount) > 0.009) {
+            it.history = it.history || [];
+            it.history.push({ amount: it.amount, date: today() });
+          }
+          Object.assign(it, d, { reviewedAt: today() });
+        }
+        openId = null; await save(); render(); return;
+      }
+
+      if (act === 'review') {
+        const it = state.items.find(i => i.id === panel.dataset.panel);
+        it.reviewedAt = today();
+        openId = null; await save(); toast = 'Marqué comme revu'; render(); return;
+      }
+
+      if (act === 'delete') {
+        state.items = state.items.filter(i => i.id !== panel.dataset.panel);
+        openId = null; await save(); render(); return;
+      }
+
+      if (act === 'export') {
+        const ta = document.createElement('textarea');
+        ta.value = JSON.stringify(state);
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); toast = 'Copié dans le presse-papiers'; }
+        catch (e) { toast = 'Copie impossible'; }
+        ta.remove(); render(); return;
+      }
+
+      if (act === 'import') {
+        const raw = prompt('Colle ici une sauvegarde exportée :');
+        if (!raw) return;
+        try {
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed.items)) throw new Error();
+          state = Object.assign({ accountNames: {} }, parsed);
+          await save(); toast = 'Sauvegarde restaurée';
+        } catch (e) { toast = 'Sauvegarde illisible'; }
+        openId = null; render(); return;
+      }
+    });
+
+    const rev = root.querySelector('#revenu');
+    if (rev) rev.onchange = async () => {
+      const v = parseFloat(rev.value);
+      state.revenu = isNaN(v) || v <= 0 ? null : v;
+      await save(); render();
+    };
+  }
+
+  load();
+})();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* hors ligne indisponible, l'app fonctionne quand meme */ });
+  });
+}
+</script>
+</body>
+</html>

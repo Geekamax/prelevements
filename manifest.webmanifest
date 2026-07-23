@@ -1,0 +1,17 @@
+{
+  "name": "Prélèvements",
+  "short_name": "Prélèvements",
+  "description": "Suivi des dépenses permanentes mensuelles",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#E9ECE4",
+  "theme_color": "#F4F6F1",
+  "lang": "fr",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
