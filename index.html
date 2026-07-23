@@ -129,10 +129,11 @@
   #root .fields { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
   #root label.f { display: block; }
   #root label.f span { display: block; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 3px; }
-  #root input, #root select {
+  #root input, #root select, #root textarea {
     font-family: var(--mono); font-size: 13px; width: 100%;
     padding: 6px 8px; border: 1px solid var(--rule); background: var(--paper); color: var(--ink);
   }
+  #root textarea { font-size: 11px; resize: vertical; }
   #root .panel-actions { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
   #root .del { color: var(--signal); border-color: var(--signal); }
   #root .history { font-size: 10px; color: var(--ink-faint); margin-top: 10px; line-height: 1.7; }
@@ -179,6 +180,8 @@
   let filter = 'all';
   let openId = null;   // id of row being edited, or 'new'
   let toast = '';
+  let showExport = false;
+  let showImport = false;
 
   const eur = n => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n || 0);
   const uid = () => Math.random().toString(36).slice(2, 9);
@@ -276,6 +279,20 @@
       </div>`;
   }
 
+  function backupPanelHTML(mode, prefill) {
+    const isImport = mode === 'import';
+    return `
+      <div class="panel" data-backup="${mode}">
+        <label class="f"><span>${isImport ? 'Colle ta sauvegarde ici' : 'Sauvegarde (sélectionne et copie si besoin)'}</span>
+          <textarea data-f="backup" rows="7">${esc(prefill || '')}</textarea>
+        </label>
+        <div class="panel-actions">
+          ${isImport ? '<button class="act" data-do="do-import">Restaurer</button>' : '<button class="act" data-do="copy-again">Copier</button>'}
+          <button class="act ghost" data-do="close-backup">Fermer</button>
+        </div>
+      </div>`;
+  }
+
   function render() {
     const t = totals();
     const list = visible();
@@ -324,10 +341,14 @@
         ${toast ? `<span class="toast">${esc(toast)}</span>` : ''}
         <button data-do="export">Exporter</button>
         <button data-do="import">Importer</button>
-      </div>`;
+      </div>
+      ${showExport ? backupPanelHTML('export', JSON.stringify(state)) : ''}
+      ${showImport ? backupPanelHTML('import', '') : ''}`;
 
     toast = '';
     bind();
+    const backupTA = root.querySelector('[data-f="backup"]');
+    if (backupTA && showExport) { backupTA.focus(); backupTA.select(); }
   }
 
   function readPanel(el) {
@@ -385,24 +406,36 @@
       }
 
       if (act === 'export') {
-        const ta = document.createElement('textarea');
-        ta.value = JSON.stringify(state);
-        document.body.appendChild(ta); ta.select();
-        try { document.execCommand('copy'); toast = 'Copié dans le presse-papiers'; }
-        catch (e) { toast = 'Copie impossible'; }
-        ta.remove(); render(); return;
+        try { await navigator.clipboard.writeText(JSON.stringify(state)); toast = 'Copié dans le presse-papiers'; }
+        catch (e) { toast = 'Copie auto impossible : sélectionne le texte ci-dessous'; }
+        showExport = true; showImport = false; render(); return;
       }
 
       if (act === 'import') {
-        const raw = prompt('Colle ici une sauvegarde exportée :');
-        if (!raw) return;
+        showImport = true; showExport = false; toast = ''; render(); return;
+      }
+
+      if (act === 'do-import') {
+        const ta = panel.querySelector('[data-f="backup"]');
         try {
-          const parsed = JSON.parse(raw);
+          const parsed = JSON.parse(ta.value);
           if (!Array.isArray(parsed.items)) throw new Error();
           state = Object.assign({ accountNames: {} }, parsed);
           await save(); toast = 'Sauvegarde restaurée';
+          showImport = false;
         } catch (e) { toast = 'Sauvegarde illisible'; }
         openId = null; render(); return;
+      }
+
+      if (act === 'copy-again') {
+        const ta = panel.querySelector('[data-f="backup"]');
+        try { await navigator.clipboard.writeText(ta.value); toast = 'Copié dans le presse-papiers'; }
+        catch (e) { toast = 'Copie impossible : sélectionne et copie manuellement'; }
+        render(); return;
+      }
+
+      if (act === 'close-backup') {
+        showImport = false; showExport = false; render(); return;
       }
     });
 
