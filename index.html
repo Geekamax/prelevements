@@ -283,7 +283,9 @@
     }
     try { state = Object.assign(state, JSON.parse(raw)); }
     catch (e) { /* donnees corrompues : on repart avec l'etat par defaut */ }
+    const hadCode = !!state.recoveryCode;
     ensureDefaults();
+    if (!hadCode) await save(); // persiste le code tout juste genere + pousse une premiere sauvegarde cloud
     if (!state.items.length) openId = 'new';
     render();
   }
