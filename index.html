@@ -199,11 +199,15 @@
     return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
   };
   async function pushBackup() {
-    if (!db || !state.recoveryCode) return;
+    if (!db) { toast = 'Sauvegarde cloud indisponible (SDK non chargé)'; render(); return; }
+    if (!state.recoveryCode) return;
     try {
       const docId = await hashCode(state.recoveryCode);
       await db.collection('backups').doc(docId).set(state);
-    } catch (e) { /* hors ligne ou erreur reseau : la copie locale reste la source de verite */ }
+    } catch (e) {
+      toast = 'Sauvegarde cloud impossible : ' + (e && e.message ? e.message : String(e));
+      render();
+    }
   }
 
   const ACCOUNTS = [
