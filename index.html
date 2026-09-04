@@ -68,12 +68,7 @@
   #root .fig-pct.over { color: var(--signal); }
   #root .fig-main.over { color: var(--signal); }
 
-  #root .backup-banner {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-    background: rgba(181,68,42,.08); border: 1px solid var(--signal); border-radius: 2px;
-    padding: 8px 12px; margin: 10px 0; font-size: 11px; letter-spacing: .02em;
-  }
-  #root .backup-banner button { padding: 4px 10px; font-size: 10px; }
+  #root .code-value { font-size: 11px; letter-spacing: .02em; text-transform: none; color: var(--ink); }
 
   /* ── controls ───────────────────────────────── */
   #root .controls {
@@ -177,10 +172,39 @@
   @media (prefers-reduced-motion: reduce) { #root * { transition: none !important; } }
 </style>
 
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script>
 (function () {
   const KEY = 'prelevements-v1';
   const root = document.getElementById('root');
+
+  const FIREBASE_CONFIG = {
+    projectId: "prelevements-app",
+    appId: "1:241216630792:web:4092863edba7665ee621bd",
+    storageBucket: "prelevements-app.firebasestorage.app",
+    apiKey: "AIzaSyBDVMuPl-UAiYokGT0DXkQvkoGGSewUZ3w",
+    authDomain: "prelevements-app.firebaseapp.com",
+    messagingSenderId: "241216630792"
+  };
+  let db = null;
+  try { firebase.initializeApp(FIREBASE_CONFIG); db = firebase.firestore(); } catch (e) { /* SDK non chargée (hors ligne au premier chargement) */ }
+
+  const generateCode = () => {
+    const bytes = crypto.getRandomValues(new Uint8Array(8));
+    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  };
+  const hashCode = async code => {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code));
+    return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+  };
+  async function pushBackup() {
+    if (!db || !state.recoveryCode) return;
+    try {
+      const docId = await hashCode(state.recoveryCode);
+      await db.collection('backups').doc(docId).set(state);
+    } catch (e) { /* hors ligne ou erreur reseau : la copie locale reste la source de verite */ }
+  }
 
   const ACCOUNTS = [
     { id: 'a', name: 'Compte prélèvements' },
@@ -198,6 +222,7 @@
   let toast = '';
   let showExport = false;
   let showImport = false;
+  let showRecoveryCode = false;
 
   const eur = n => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n || 0);
   const uid = () => Math.random().toString(36).slice(2, 9);
@@ -230,6 +255,7 @@
   function ensureDefaults() {
     if (!state.categories || !state.categories.length) state.categories = DEFAULT_CATEGORIES.slice();
     if (!state.transactions) state.transactions = [];
+    if (!state.recoveryCode) state.recoveryCode = generateCode();
   }
 
   async function load() {
@@ -240,24 +266,79 @@
         const parsed = JSON.parse(decodeURIComponent(restore));
         if (!Array.isArray(parsed.items)) throw new Error();
         state = Object.assign({ accountNames: {} }, parsed);
-        await save();
         toast = 'Sauvegarde restaurée depuis le lien';
       } catch (e) { toast = 'Lien de sauvegarde invalide'; }
       history.replaceState(null, '', location.pathname);
-    } else {
-      try {
-        const raw = localStorage.getItem(KEY);
-        if (raw) state = Object.assign(state, JSON.parse(raw));
-      } catch (e) { /* première ouverture : rien en mémoire */ }
+      ensureDefaults();
+      await save();
+      if (!state.items.length) openId = 'new';
+      render();
+      return;
     }
+
+    const raw = localStorage.getItem(KEY);
+    if (raw === null) {
+      renderRecoveryPrompt();
+      return;
+    }
+    try { state = Object.assign(state, JSON.parse(raw)); }
+    catch (e) { /* donnees corrompues : on repart avec l'etat par defaut */ }
     ensureDefaults();
     if (!state.items.length) openId = 'new';
     render();
   }
 
+  function renderRecoveryPrompt() {
+    root.innerHTML = `
+      <div class="masthead"><h1>Prélèvements</h1></div>
+      <div class="empty" style="text-align:left;padding:24px 0">
+        <strong>Nouvelle installation</strong>
+        Si tu as déjà utilisé l'app et noté ton code de récupération, colle-le ci-dessous pour retrouver tes données automatiquement. Sinon, continue sans code : une nouvelle sauvegarde cloud sera créée.
+        <div class="fields" style="grid-template-columns:1fr;margin-top:14px">
+          <label class="f"><span>Code de récupération</span>
+            <input id="recovery-input" placeholder="Colle ton code ici" autocomplete="off"></label>
+        </div>
+        <div class="panel-actions" style="margin-top:12px">
+          <button class="act" id="recovery-restore">Restaurer</button>
+          <button class="act ghost" id="recovery-skip">Continuer sans code</button>
+        </div>
+        <div id="recovery-status" style="margin-top:10px;font-size:11px;color:var(--ink-soft)"></div>
+      </div>`;
+
+    document.getElementById('recovery-skip').onclick = async () => {
+      ensureDefaults();
+      openId = 'new';
+      await save();
+      render();
+    };
+
+    document.getElementById('recovery-restore').onclick = async () => {
+      const code = document.getElementById('recovery-input').value.trim();
+      const statusEl = document.getElementById('recovery-status');
+      if (!code) { statusEl.textContent = 'Entre un code.'; return; }
+      if (!db) { statusEl.textContent = 'Connexion au cloud indisponible, réessaie.'; return; }
+      statusEl.textContent = 'Recherche…';
+      try {
+        const docId = await hashCode(code);
+        const snap = await db.collection('backups').doc(docId).get();
+        if (!snap.exists) { statusEl.textContent = 'Aucune sauvegarde trouvée pour ce code.'; return; }
+        state = Object.assign({ accountNames: {} }, snap.data());
+        state.recoveryCode = code;
+        ensureDefaults();
+        if (!state.items.length) openId = 'new';
+        await save();
+        toast = 'Données restaurées depuis le cloud';
+        render();
+      } catch (e) {
+        statusEl.textContent = 'Erreur réseau, réessaie.';
+      }
+    };
+  }
+
   async function save() {
     try { localStorage.setItem(KEY, JSON.stringify(state)); }
     catch (e) { toast = 'Enregistrement impossible'; render(); }
+    pushBackup();
   }
 
   function visible() {
@@ -447,13 +528,6 @@
       if (openId === 'new') ledger += panelHTML(null);
     }
 
-    const backupAge = daysSince(state.lastBackupAt);
-    const backupBannerHTML = (backupAge === null || backupAge >= 7) ? `
-      <div class="backup-banner">
-        <span>${backupAge === null ? 'Aucune sauvegarde effectuée' : `Dernière sauvegarde il y a ${backupAge} jour${backupAge > 1 ? 's' : ''}`}</span>
-        <button class="act ghost" data-do="export">Exporter maintenant</button>
-      </div>` : '';
-
     const monthNavHTML = isTx ? `
       <div class="month-nav">
         <button class="act ghost" data-do="prev-month" aria-label="Mois précédent">‹</button>
@@ -466,8 +540,6 @@
         <h1>Prélèvements</h1>
         <div class="figures">${figuresHTML}</div>
       </div>
-
-      ${backupBannerHTML}
 
       <div class="controls">
         <div class="tabs" role="group" aria-label="Filtrer par compte">
@@ -485,6 +557,9 @@
       <div class="footer">
         <label>Revenu net mensuel
           <input id="revenu" type="number" min="0" step="10" value="${state.revenu ?? ''}" placeholder="—"></label>
+        <span>☁ Sauvegarde auto — Code : <span class="code-value">${showRecoveryCode ? esc(state.recoveryCode || '') : '••••••••••••••••'}</span></span>
+        <button data-do="toggle-code">${showRecoveryCode ? 'Masquer' : 'Afficher'}</button>
+        <button data-do="copy-code">Copier le code</button>
         <div class="spacer"></div>
         ${toast ? `<span class="toast">${esc(toast)}</span>` : ''}
         <button data-do="export">Exporter</button>
@@ -633,6 +708,14 @@
 
       if (act === 'close-backup') {
         showImport = false; showExport = false; render(); return;
+      }
+
+      if (act === 'toggle-code') { showRecoveryCode = !showRecoveryCode; render(); return; }
+
+      if (act === 'copy-code') {
+        try { await navigator.clipboard.writeText(state.recoveryCode); toast = 'Code copié dans le presse-papiers'; }
+        catch (e) { toast = 'Copie impossible : appuie sur Afficher et copie manuellement'; }
+        render(); return;
       }
     });
 
