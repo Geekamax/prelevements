@@ -188,7 +188,13 @@
     messagingSenderId: "241216630792"
   };
   let db = null;
-  try { firebase.initializeApp(FIREBASE_CONFIG); db = firebase.firestore(); } catch (e) { /* SDK non chargée (hors ligne au premier chargement) */ }
+  try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+    // certains reseaux mobiles/box bloquent le streaming WebChannel par defaut ;
+    // ce reglage bascule automatiquement en long-polling si besoin (recommandation officielle Firebase).
+    db.settings({ experimentalAutoDetectLongPolling: true });
+  } catch (e) { /* SDK non chargée (hors ligne au premier chargement) */ }
 
   const generateCode = () => {
     const bytes = crypto.getRandomValues(new Uint8Array(8));
@@ -204,6 +210,8 @@
     try {
       const docId = await hashCode(state.recoveryCode);
       await db.collection('backups').doc(docId).set(state);
+      toast = '☁ Sauvegarde cloud à jour';
+      render();
     } catch (e) {
       toast = 'Sauvegarde cloud impossible : ' + (e && e.message ? e.message : String(e));
       render();
